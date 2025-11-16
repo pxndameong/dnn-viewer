@@ -120,7 +120,7 @@ def create_matplotlib_map(df, point_size, title):
     return fig
 
 # Main Streamlit app logic
-st.title("📊 DK Viewer - Map Viewer")
+st.title("📊 DNN Viewer - Map Viewer")
 
 if 'data' not in st.session_state:
     st.session_state.data = None

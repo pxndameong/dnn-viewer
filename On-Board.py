@@ -7,7 +7,7 @@ st.set_page_config(
 )
 
 st.title("Selamat Datang di Aplikasi DNN Viewer!")
-st.write("Aplikasi ini dibuat untuk melihat data prediksi curah hujan di berbagai wilayah.")
+st.write("Aplikasi ini dibuat untuk melihat data prediksi curah hujan (DNN-10k Epoch) di berbagai wilayah.")
 
 st.markdown("""
 Silakan pilih halaman dari menu di **sidebar** untuk mulai menjelajahi data:

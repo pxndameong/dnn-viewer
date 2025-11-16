@@ -369,7 +369,7 @@ def plot_comparative_charts_monthly(tahun_start: int, bulan_start: int, tahun_en
     # --- Akhir Plot Scatter Plot ---
 
 # Main Streamlit app logic 
-st.title("📊 DK Viewer - Tabel Analisis Komparatif") 
+st.title("📊 DNN Viewer - Tabel Analisis Komparatif") 
 
 if 'comparative_data' not in st.session_state: 
     st.session_state.comparative_data = None 

@@ -87,7 +87,7 @@ def load_padanan_data(tahun: int):
     return df[required_cols]
 
 # Main Streamlit app logic
-st.title("🗓️ DK Viewer - Monthly Analytic")
+st.title("🗓️ DNN Viewer - Monthly Analytic")
 st.markdown("Fitur ini membandingkan data prediksi dan *ground truth* untuk **satu bulan tertentu** di sepanjang rentang tahun yang dipilih.")
 
 if 'comparative_data' not in st.session_state:

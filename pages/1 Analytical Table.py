@@ -89,7 +89,7 @@ def load_padanan_data(tahun: int):
 
 
 # Main Streamlit app logic
-st.title("📊 DK Viewer - Analytical Table")
+st.title("📊 DNN Viewer - Analytical Table")
 
 if 'data' not in st.session_state:
     st.session_state.data = None

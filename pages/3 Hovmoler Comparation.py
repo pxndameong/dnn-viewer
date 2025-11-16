@@ -104,7 +104,7 @@ def calculate_mae_by_year_and_station(data_dict, years, selected_stations_list):
         return pd.DataFrame()
 
 # --- Main Streamlit app logic ---
-st.title("🗺️ DK Viewer - Diagram Hovmoler MAE")
+st.title("🗺️ DNN Viewer - Diagram Hovmoler MAE")
 st.markdown("""
 Visualisasi ini menunjukkan performa MAE dari tiga model (0, 10, dan 51 variabel) per tahun untuk setiap stasiun. 
 Pilih stasiun mana pun untuk membuat diagram Hovmoler.
