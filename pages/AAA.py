@@ -43,12 +43,10 @@ station_data = [
     {"name": "Stasiun 505 (Lat: -6.25, Lon: 106.5)", "lat": -6.25, "lon": 106.5, "index": 505},
 ]
 
-# Modifikasi: Tambahkan opsi "Semua Data" dan "Rata-Rata Seluruh Stasiun"
+# Modifikasi: Tambahkan opsi "Semua Data" dan "Rata-Rata 7 Stasiun"
 station_names = [s["name"] for s in station_data]
-# Perubahan di sini: Tambahkan opsi baru
 station_names.insert(0, "Semua Data") 
-station_names.insert(1, "Rata-Rata 7 Stasiun") # Rename opsi lama
-# station_names.insert(0, "Rata-Rata Seluruh Stasiun") # Opsi lama diganti
+station_names.insert(1, "Rata-Rata 7 Stasiun") 
 
 # Precompute station coords set for fast filtering (tuples of floats)
 station_coords = {(float(s["lat"]), float(s["lon"])) for s in station_data}
@@ -148,8 +146,6 @@ def plot_comparative_charts_monthly(tahun_start: int, bulan_start: int, tahun_en
     """
     Fungsi untuk menampilkan bar chart perbandingan curah hujan bulanan (prediksi vs ground truth) 
     dan di bawahnya, Scatter Plot MAE, RMSE, dan R^2 dalam rentang waktu kustom.
-
-    Implementasi ALL(rata) dan 7 Stasiun Rata-rata.
     """
     st.markdown("---")
     
@@ -185,40 +181,37 @@ def plot_comparative_charts_monthly(tahun_start: int, bulan_start: int, tahun_en
     
     # 1. Filter/Rata-rata Ground Truth
     if is_all_data:
-        # Rata-rata SEMUA grid/stasiun yang ada di data padanan
-        df_padanan_temp = df_padanan_full.copy()
-        if not df_padanan_temp.empty:
-            df_padanan_temp['date'] = pd.to_datetime(df_padanan_temp[['year', 'month']].assign(day=1))
-            df_padanan_temp = df_padanan_temp[(df_padanan_temp['date'] >= start_date) & (df_padanan_temp['date'] <= end_date)].copy()
-            df_padanan_temp.drop(columns=['date'], inplace=True)
-            df_padanan_filtered = df_padanan_temp.groupby(['year', 'month']).agg(rainfall=('rainfall', 'mean')).reset_index()
+        # User requested: 1 bulan = 1 stasiun = 1 titik. NO AGGREGATION.
+        df_padanan_filtered = df_padanan_full.copy()
+        if not df_padanan_filtered.empty:
+            df_padanan_filtered['date'] = pd.to_datetime(df_padanan_filtered[['year', 'month']].assign(day=1))
+            df_padanan_filtered = df_padanan_filtered[(df_padanan_filtered['date'] >= start_date) & (df_padanan_filtered['date'] <= end_date)].copy()
+            df_padanan_filtered.drop(columns=['date'], inplace=True)
+            df_padanan_filtered = df_padanan_filtered[['year', 'month', 'latitude', 'longitude', 'rainfall']]
         else:
             df_padanan_filtered = pd.DataFrame()
 
     elif is_avg_7_stations:
         # Filter padanan hanya untuk 7 stasiun lalu hitung rata-rata per bulan
-        # Pastikan kolom latitude/longitude numeric
         df_padanan_stations = df_padanan_full.copy()
         if {'latitude', 'longitude'}.issubset(df_padanan_stations.columns):
-            # Use tuple matching with float to avoid dtype mismatch
             df_padanan_stations['coord_tuple'] = list(zip(df_padanan_stations['latitude'].astype(float), df_padanan_stations['longitude'].astype(float)))
             df_padanan_stations = df_padanan_stations[df_padanan_stations['coord_tuple'].isin(station_coords)].copy()
             df_padanan_stations.drop(columns=['coord_tuple'], inplace=True)
         else:
-            # fallback: if latitude/longitude not present, keep as empty
             df_padanan_stations = pd.DataFrame(columns=df_padanan_full.columns)
         
         if df_padanan_stations.empty:
             st.warning("⚠️ Ground Truth (padanan) untuk 7 stasiun tidak ditemukan dalam data padanan.")
             df_padanan_filtered = pd.DataFrame()
         else:
-            # create date col, filter range, then groupby year-month mean
             df_padanan_stations['date'] = pd.to_datetime(df_padanan_stations[['year', 'month']].assign(day=1))
             df_padanan_stations = df_padanan_stations[(df_padanan_stations['date'] >= start_date) & (df_padanan_stations['date'] <= end_date)].copy()
             df_padanan_stations.drop(columns=['date'], inplace=True)
+            # Agregasi (Rata-rata)
             df_padanan_filtered = df_padanan_stations.groupby(['year', 'month']).agg(rainfall=('rainfall', 'mean')).reset_index()
     else:
-        # Filter Ground Truth untuk stasiun yang dipilih
+        # Filter Ground Truth untuk stasiun yang dipilih (Single Station)
         station_info = next((s for s in station_data if s["name"] == selected_station_name), None)
         if not station_info:
             st.error("❌ Informasi stasiun tidak ditemukan.")
@@ -236,13 +229,12 @@ def plot_comparative_charts_monthly(tahun_start: int, bulan_start: int, tahun_en
     df_padanan_station = df_padanan_filtered.copy() if isinstance(df_padanan_filtered, pd.DataFrame) else pd.DataFrame()
 
     # Rename kolom for plotting if available
-    if not df_padanan_station.empty and 'rainfall' in df_padanan_station.columns:
-        df_padanan_plot = df_padanan_station.rename(columns={'rainfall': 'Curah Hujan (mm)'})
-        df_padanan_plot['Tipe Data'] = 'Ground Truth (Rainfall)'
-        all_data_for_plot.append(df_padanan_plot[['year', 'month', 'Curah Hujan (mm)', 'Tipe Data']])
-    else:
-        # If padanan empty, warn (but continue to try pred)
-        if df_padanan_station.empty:
+    if not is_all_data:
+        if not df_padanan_station.empty and 'rainfall' in df_padanan_station.columns:
+            df_padanan_plot = df_padanan_station.rename(columns={'rainfall': 'Curah Hujan (mm)'})
+            df_padanan_plot['Tipe Data'] = 'Ground Truth (Rainfall)'
+            all_data_for_plot.append(df_padanan_plot[['year', 'month', 'Curah Hujan (mm)', 'Tipe Data']])
+        elif df_padanan_station.empty:
             st.warning("⚠️ Ground Truth (Rainfall) tidak tersedia untuk stasiun/rata-rata ini di tahun yang dipilih.")
     
     # 2. Ambil data Prediksi (0, 10, 51 Variabel)
@@ -255,12 +247,11 @@ def plot_comparative_charts_monthly(tahun_start: int, bulan_start: int, tahun_en
         else:
             df_pred_full = pd.concat(df_pred_all, ignore_index=True)
         
-        # Normalize lat/lon names if necessary
+        # Normalize/Ensure numeric for lat/lon
         if 'lat' in df_pred_full.columns and 'latitude' not in df_pred_full.columns:
             df_pred_full = df_pred_full.rename(columns={'lat': 'latitude'})
         if 'lon' in df_pred_full.columns and 'longitude' not in df_pred_full.columns:
             df_pred_full = df_pred_full.rename(columns={'lon': 'longitude'})
-        # Ensure numeric for lat/lon
         if 'latitude' in df_pred_full.columns:
             df_pred_full['latitude'] = pd.to_numeric(df_pred_full['latitude'], errors='coerce')
         if 'longitude' in df_pred_full.columns:
@@ -268,13 +259,13 @@ def plot_comparative_charts_monthly(tahun_start: int, bulan_start: int, tahun_en
 
         # Filter/Rata-rata Prediksi
         if is_all_data:
-            # Rata-rata SEMUA grid/stasiun yang ada di data prediksi
-            df_pred_temp = df_pred_full.copy()
-            if not df_pred_temp.empty:
-                df_pred_temp['date'] = pd.to_datetime(df_pred_temp[['year', 'month']].assign(day=1))
-                df_pred_temp = df_pred_temp[(df_pred_temp['date'] >= start_date) & (df_pred_temp['date'] <= end_date)].copy()
-                df_pred_temp.drop(columns=['date'], inplace=True)
-                df_pred_filtered = df_pred_temp.groupby(['year', 'month']).agg(ch_pred=('ch_pred', 'mean')).reset_index()
+            # User requested: 1 bulan = 1 stasiun = 1 titik. NO AGGREGATION.
+            df_pred_filtered = df_pred_full.copy()
+            if not df_pred_filtered.empty:
+                df_pred_filtered['date'] = pd.to_datetime(df_pred_filtered[['year', 'month']].assign(day=1))
+                df_pred_filtered = df_pred_filtered[(df_pred_filtered['date'] >= start_date) & (df_pred_filtered['date'] <= end_date)].copy()
+                df_pred_filtered.drop(columns=['date'], inplace=True)
+                df_pred_filtered = df_pred_filtered[['year', 'month', 'latitude', 'longitude', 'ch_pred']]
             else:
                 df_pred_filtered = pd.DataFrame()
         
@@ -294,6 +285,7 @@ def plot_comparative_charts_monthly(tahun_start: int, bulan_start: int, tahun_en
                 df_pred_stations['date'] = pd.to_datetime(df_pred_stations[['year', 'month']].assign(day=1))
                 df_pred_stations = df_pred_stations[(df_pred_stations['date'] >= start_date) & (df_pred_stations['date'] <= end_date)].copy()
                 df_pred_stations.drop(columns=['date'], inplace=True)
+                # Agregasi (Rata-rata)
                 df_pred_filtered = df_pred_stations.groupby(['year', 'month']).agg(ch_pred=('ch_pred', 'mean')).reset_index()
         else:
             # Filter Prediksi untuk stasiun yang dipilih (single station)
@@ -313,70 +305,82 @@ def plot_comparative_charts_monthly(tahun_start: int, bulan_start: int, tahun_en
         df_pred_station = df_pred_filtered.copy() if isinstance(df_pred_filtered, pd.DataFrame) else pd.DataFrame()
 
         # Gabungkan data Prediksi dan Aktual (Padanan) untuk perhitungan Metrik dan Scatter Plot
+        merge_cols = ['year', 'month']
+        if is_all_data:
+             # Untuk "Semua Data", merge berdasarkan (year, month, lat, lon)
+             merge_cols = ['year', 'month', 'latitude', 'longitude']
+        
         df_merged_custom_range = pd.merge(
-            df_pred_station[['year', 'month', 'ch_pred']],
-            df_padanan_station[['year', 'month', 'rainfall']],
-            on=['year', 'month'],
+            df_pred_station[['year', 'month', 'ch_pred'] + (['latitude', 'longitude'] if is_all_data else [])],
+            df_padanan_station[['year', 'month', 'rainfall'] + (['latitude', 'longitude'] if is_all_data else [])],
+            on=merge_cols,
             how='inner'
-        ).drop_duplicates(subset=['year', 'month'])
+        ).drop_duplicates(subset=merge_cols)
 
         all_combined_data[dataset_name] = df_merged_custom_range
 
-        # Data untuk Bar Chart
-        if not df_pred_station.empty and 'ch_pred' in df_pred_station.columns:
-            df_pred_plot = df_pred_station.rename(columns={'ch_pred': 'Curah Hujan (mm)'})
-            df_pred_plot['Tipe Data'] = f'Prediksi ({dataset_name})'
-            all_data_for_plot.append(df_pred_plot[['year', 'month', 'Curah Hujan (mm)', 'Tipe Data']])
-        else:
-            st.warning(f"⚠️ Prediksi ({dataset_name}) tidak tersedia dalam rentang waktu yang dipilih atau tidak cocok dengan stasiun.")
+        # Data untuk Bar Chart (SKIP JIKA is_all_data)
+        if not is_all_data:
+            if not df_pred_station.empty and 'ch_pred' in df_pred_station.columns:
+                df_pred_plot = df_pred_station.rename(columns={'ch_pred': 'Curah Hujan (mm)'})
+                df_pred_plot['Tipe Data'] = f'Prediksi ({dataset_name})'
+                all_data_for_plot.append(df_pred_plot[['year', 'month', 'Curah Hujan (mm)', 'Tipe Data']])
+            else:
+                st.warning(f"⚠️ Prediksi ({dataset_name}) tidak tersedia dalam rentang waktu yang dipilih atau tidak cocok dengan stasiun.")
 
     # --- Plot Bar Chart (Plotly Express) ---
-    if not all_data_for_plot:
-        st.error("❌ Tidak ada data (prediksi maupun ground truth) yang ditemukan untuk periode ini.")
-        return
+    if is_all_data:
+        st.warning("⚠️ Bar Chart Curah Hujan Bulanan Komparatif tidak ditampilkan untuk **Semua Data** karena data terdiri dari ribuan titik (Stasiun x Bulan) yang tidak dirata-ratakan. Silakan merujuk ke Scatter Plot di bawah.")
+    
+    if not is_all_data:
+        if not all_data_for_plot:
+            st.error("❌ Tidak ada data (prediksi maupun ground truth) yang ditemukan untuk periode ini.")
+            return
 
-    df_plot = pd.concat(all_data_for_plot, ignore_index=True)
-    df_plot['Bulan-Tahun'] = df_plot['month'].map(bulan_dict) + ' ' + df_plot['year'].astype(str)
+        df_plot = pd.concat(all_data_for_plot, ignore_index=True)
+        df_plot['Bulan-Tahun'] = df_plot['month'].map(bulan_dict) + ' ' + df_plot['year'].astype(str)
 
-    # Buat kolom urutan untuk sorting di plot
-    df_plot['date_sort'] = pd.to_datetime(df_plot[['year', 'month']].assign(day=1))
-    df_plot = df_plot.sort_values(by=['date_sort', 'Tipe Data'])
+        # Buat kolom urutan untuk sorting di plot
+        df_plot['date_sort'] = pd.to_datetime(df_plot[['year', 'month']].assign(day=1))
+        df_plot = df_plot.sort_values(by=['date_sort', 'Tipe Data'])
 
-    # Warna untuk Bar Chart
-    bar_color_map = {
-        'Ground Truth (Rainfall)': 'saddlebrown',
-        'Prediksi (0 Variabel)': 'royalblue',
-        'Prediksi (10 Variabel)': 'deeppink',
-        'Prediksi (51 Variabel)': 'forestgreen'
-    }
+        # Warna untuk Bar Chart
+        bar_color_map = {
+            'Ground Truth (Rainfall)': 'saddlebrown',
+            'Prediksi (0 Variabel)': 'royalblue',
+            'Prediksi (10 Variabel)': 'deeppink',
+            'Prediksi (51 Variabel)': 'forestgreen'
+        }
 
-    # Urutan Kategori di sumbu X
-    x_order = df_plot['Bulan-Tahun'].unique().tolist()
+        # Urutan Kategori di sumbu X
+        x_order = df_plot['Bulan-Tahun'].unique().tolist()
 
-    fig_bar = px.bar(
-        df_plot,
-        x='Bulan-Tahun',
-        y='Curah Hujan (mm)',
-        color='Tipe Data',
-        barmode='group',
-        color_discrete_map=bar_color_map,
-        title=f'Curah Hujan Bulanan Komparatif ({date_range_str}) di {selected_station_name}',
-        labels={'Curah Hujan (mm)': 'Curah Hujan (mm)', 'Bulan-Tahun': 'Bulan-Tahun'},
-    )
+        fig_bar = px.bar(
+            df_plot,
+            x='Bulan-Tahun',
+            y='Curah Hujan (mm)',
+            color='Tipe Data',
+            barmode='group',
+            color_discrete_map=bar_color_map,
+            title=f'Curah Hujan Bulanan Komparatif ({date_range_str}) di {selected_station_name}',
+            labels={'Curah Hujan (mm)': 'Curah Hujan (mm)', 'Bulan-Tahun': 'Bulan-Tahun'},
+        )
 
-    fig_bar.update_layout(
-        xaxis_title="Bulan-Tahun",
-        yaxis_title="Curah Hujan (mm)",
-        legend_title="Tipe Data",
-        bargap=0.15,
-        xaxis={'categoryorder': 'array', 'categoryarray': x_order}
-    )
+        fig_bar.update_layout(
+            xaxis_title="Bulan-Tahun",
+            yaxis_title="Curah Hujan (mm)",
+            legend_title="Tipe Data",
+            bargap=0.15,
+            xaxis={'categoryorder': 'array', 'categoryarray': x_order}
+        )
 
-    st.plotly_chart(fig_bar, use_container_width=True)
+        st.plotly_chart(fig_bar, use_container_width=True)
     # --- Akhir Plot Bar Chart ---
 
     st.markdown("---")
-    st.subheader(f"Scatter Plot Curah Hujan Aktual vs Prediksi Bulanan ({date_range_str})")
+    st.subheader(f"Scatter Plot Curah Hujan Aktual vs Prediksi ({date_range_str})")
+    if is_all_data:
+        st.caption("Catatan: Setiap titik mewakili $1 \text{ bulan} = 1 \text{ stasiun} = 1 \text{ titik}$ (data tidak dirata-ratakan).")
 
     # --- Plot Scatter Plot (Matplotlib) ---
     # layout : 1 baris 3 kolom (3 model)
@@ -395,10 +399,10 @@ def plot_comparative_charts_monthly(tahun_start: int, bulan_start: int, tahun_en
     for dataset_name, df_combined in all_combined_data.items():
         ax = axes[i]
 
-        # Hitung Metrik Rentang Kustom
+        # Hitung Metrik Rentang Kustom (dihitung berdasarkan semua titik data)
         metrics = calculate_metrics(df_combined, 'rainfall', 'ch_pred')
 
-        # Data untuk Scatter Plot (1 titik = 1 bulan)
+        # Data untuk Scatter Plot (1 titik = 1 station-month)
         actual = df_combined['rainfall'].astype(float)
         pred = df_combined['ch_pred'].astype(float)
 
@@ -422,8 +426,8 @@ def plot_comparative_charts_monthly(tahun_start: int, bulan_start: int, tahun_en
 
         # Label dan Judul
         ax.set_title(f'Model {dataset_name}', fontsize=14)
-        ax.set_xlabel('Curah Hujan Aktual Bulanan (mm)', fontsize=12)
-        ax.set_ylabel('Curah Hujan Prediksi Bulanan (mm)', fontsize=12)
+        ax.set_xlabel('Curah Hujan Aktual (mm)', fontsize=12)
+        ax.set_ylabel('Curah Hujan Prediksi (mm)', fontsize=12)
 
         i += 1
 
@@ -506,7 +510,6 @@ if submit:
     else: # Time Series & Summary 
         tahun_final = list(range(tahun_from, tahun_until + 1)) 
         
-        # Perubahan di sini: Tentukan tipe agregasi
         is_all_data = selected_station_name == "Semua Data"
         is_avg_7_stations = selected_station_name == "Rata-Rata 7 Stasiun"
         
@@ -522,9 +525,6 @@ if submit:
                 
                 if not df_main.empty and not df_padanan.empty: 
                     # Merge data prediksi dan padanan
-                    # Note: Jika lat/lon di df_main/df_padanan memiliki banyak digit, proses merge bisa lambat.
-                    # Asumsi lat/lon sudah dinormalisasi (misal: 2 desimal) atau di-round sebelum merge.
-                    # Menggunakan 'left' join untuk mempertahankan semua prediksi.
                     df_merged_year = pd.merge(df_main, df_padanan, on=['month', 'year', 'latitude', 'longitude'], how='left') 
                     df_merged_year = df_merged_year.drop_duplicates(subset=['latitude', 'longitude', 'month', 'year']) 
                     all_filtered.append(df_merged_year) 
@@ -536,38 +536,36 @@ if submit:
                 
                 # 2. Filter/Rata-rata Stasiun
                 if is_all_data:
-                    # Rata-rata SEMUA grid/stasiun di data
+                    # User requested NO AGGREGATION, data tetap di tingkat (lat, lon, year, month)
                     df_temp = df_filtered_all.copy()
+                    df_filtered_station = df_temp # Non-aggregated
+
                 elif is_avg_7_stations:
                     # Rata-rata HANYA 7 stasiun
                     df_temp = df_filtered_all.copy()
                     if {'latitude', 'longitude'}.issubset(df_temp.columns):
                         df_temp['coord_tuple'] = list(zip(df_temp['latitude'].astype(float), df_temp['longitude'].astype(float)))
-                        # Hanya ambil baris yang koordinatnya ada di 7 stasiun
                         if df_temp['coord_tuple'].isin(station_coords).any():
                             df_temp = df_temp[df_temp['coord_tuple'].isin(station_coords)].copy()
                         else:
                             df_temp = pd.DataFrame() # Jika tidak ada yang cocok
-                        # drop helper col if present
                         if 'coord_tuple' in df_temp.columns:
                             df_temp.drop(columns=['coord_tuple'], inplace=True)
                     else:
-                        # Jika tidak ada lat/lon, anggap semua data tidak relevan atau error dalam format
                         df_temp = pd.DataFrame()
 
-                # Logika Rata-Rata untuk 'Semua Data' dan 'Rata-Rata 7 Stasiun'
-                if is_all_data or is_avg_7_stations:
+                    # Logika Rata-Rata Bulanan
                     aggregation_cols = ['ch_pred']
                     if 'rainfall' in df_temp.columns:
                         aggregation_cols.append('rainfall')
                     
                     if not df_temp.empty:
-                        # Rata-rata data yang sudah difilter/dipilih berdasarkan tahun dan bulan
                         df_filtered_station = df_temp.groupby(['year', 'month']).agg(
                             **{col: (col if col != 'ch_pred' else 'ch_pred', 'mean') for col in aggregation_cols}
                         ).reset_index()
                     else:
                         df_filtered_station = pd.DataFrame()
+                
                 else:
                     # Filter Stasiun Tunggal
                     station_info = next(s for s in station_data if s["name"] == selected_station_name) 
@@ -578,7 +576,6 @@ if submit:
 
                 # 3. Hitung Metrik Error (Hanya jika ada kolom 'rainfall')
                 if 'rainfall' in df_filtered_station.columns and not df_filtered_station.empty: 
-                    # Pastikan kolom pred dan actual bertipe numerik sebelum perhitungan
                     df_filtered_station['ch_pred'] = pd.to_numeric(df_filtered_station['ch_pred'], errors='coerce')
                     df_filtered_station['rainfall'] = pd.to_numeric(df_filtered_station['rainfall'], errors='coerce')
                     
@@ -586,7 +583,6 @@ if submit:
                     df_filtered_station['absolute_error'] = abs(df_filtered_station['ch_pred'] - df_filtered_station['rainfall']) 
                     df_filtered_station['squared_error'] = (df_filtered_station['ch_pred'] - df_filtered_station['rainfall'])**2 
                 else: 
-                    # If df empty, create empty columns to keep format
                     df_filtered_station['error_bias'] = None 
                     df_filtered_station['absolute_error'] = None 
                     df_filtered_station['squared_error'] = None 
@@ -609,31 +605,32 @@ if submit:
                 filtered_data_dict[dataset_name] = pd.DataFrame() 
 
         st.session_state.comparative_data = filtered_data_dict 
-        st.success(f"✅ Data berhasil dimuat dan siap untuk perbandingan Time Series dari **{bulan_dict[bulan_from]} {tahun_from}** hingga **{bulan_dict[bulan_until]} {tahun_until}** untuk {selected_station_name}.") 
+        st.success(f"✅ Data berhasil dimuat dan siap untuk perbandingan Time Series/Summary dari **{bulan_dict[bulan_from]} {tahun_from}** hingga **{bulan_dict[bulan_until]} {tahun_until}** untuk {selected_station_name}.") 
 
-# --- Tampilan Time Series & Summary (Tidak Berubah) --- 
+# --- Tampilan Time Series & Summary (Termasuk Logic untuk "Semua Data") --- 
 if st.session_state.comparative_data and st.session_state.comparative_data.keys() and display_type == "Time Series & Summary": 
+    
+    is_all_data = st.session_state.selected_station_name == "Semua Data"
     
     # Ringkasan Statistik 
     st.markdown("---") 
     st.subheader(f"Ringkasan Statistik Komparatif untuk {st.session_state.selected_station_name}") 
+    if is_all_data:
+        st.caption("Catatan: Metrik dihitung berdasarkan semua titik data (Stasiun x Bulan) dalam rentang waktu yang dipilih.")
     
     summary_cols = ['ch_pred', 'rainfall', 'error_bias', 'absolute_error', 'squared_error'] 
     comparison_summary = [] 
     
     for dataset_name, df in st.session_state.comparative_data.items(): 
         if not df.empty: 
-            # Re-calculate overall MAE, RMSE, R2 from raw merged data for full range
             overall_metrics = calculate_metrics(df.copy(), 'rainfall', 'ch_pred')
             
             summary_row = {"Metrik": dataset_name} 
             
-            # Add MAE, RMSE, R2
             summary_row["MAE"] = overall_metrics['MAE']
             summary_row["RMSE"] = overall_metrics['RMSE']
             summary_row["R2"] = overall_metrics['R2']
 
-            # Add Mean/Sum of basic metrics
             for col in summary_cols: 
                 if col in df.columns and pd.api.types.is_numeric_dtype(df[col]): 
                     summary_row[f"Mean ({col})"] = df[col].mean() 
@@ -644,7 +641,6 @@ if st.session_state.comparative_data and st.session_state.comparative_data.keys(
             comparison_summary.append(summary_row) 
 
     if comparison_summary: 
-        # Tentukan urutan kolom agar Metrik utama (MAE, RMSE, R2) di awal
         all_cols = list(comparison_summary[0].keys())
         metric_cols = ["MAE", "RMSE", "R2"]
         ordered_cols = ["Metrik"] + metric_cols + [c for c in all_cols if c not in ["Metrik"] + metric_cols]
@@ -661,83 +657,86 @@ if st.session_state.comparative_data and st.session_state.comparative_data.keys(
     st.markdown("---") 
     st.subheader("Plot Perbandingan Time Series") 
     
-    selected_models = st.multiselect( 
-        "Pilih model yang akan di-plot:", 
-        options=list(dataset_info.keys()), 
-        default=list(dataset_info.keys()), 
-        key='ts_models' 
-    ) 
+    if is_all_data: # Jika 'Semua Data' dipilih, lewati plot
+        st.warning(f"⚠️ Plot Time Series individual tidak ditampilkan untuk **{st.session_state.selected_station_name}** karena data terdiri dari ribuan titik (Stasiun x Bulan) yang tidak dirata-ratakan. Silakan merujuk pada Ringkasan Statistik di atas.")
+    else:
+        selected_models = st.multiselect( 
+            "Pilih model yang akan di-plot:", 
+            options=list(dataset_info.keys()), 
+            default=list(dataset_info.keys()), 
+            key='ts_models' 
+        ) 
 
-    metrics_to_plot = st.multiselect( 
-        "Pilih metrik untuk di-plot:", 
-        options=['ch_pred', 'rainfall', 'error_bias', 'absolute_error', 'squared_error'], 
-        default=['ch_pred', 'rainfall'], 
-        key='ts_metrics' 
-    ) 
+        metrics_to_plot = st.multiselect( 
+            "Pilih metrik untuk di-plot:", 
+            options=['ch_pred', 'rainfall', 'error_bias', 'absolute_error', 'squared_error'], 
+            default=['ch_pred', 'rainfall'], 
+            key='ts_metrics' 
+        ) 
 
-    if not selected_models or not metrics_to_plot: 
-        st.info("💡 Pilih setidaknya satu model dan satu metrik untuk menampilkan plot.") 
-    else: 
-        is_rainfall_selected = 'rainfall' in metrics_to_plot 
-        other_metrics = [m for m in metrics_to_plot if m != 'rainfall'] 
-
-        dfs_to_plot = [] 
-        
-        # Logika penggabungan data untuk Time Series 
-        if is_rainfall_selected and selected_models: 
-            first_model = selected_models[0] 
-            df_rainfall = st.session_state.comparative_data.get(first_model) 
-            if not df_rainfall.empty and 'rainfall' in df_rainfall.columns: 
-                rainfall_df = df_rainfall[['year', 'month', 'rainfall']].copy() 
-                rainfall_df['model_name'] = 'Ground Truth' 
-                rainfall_df = rainfall_df.rename(columns={'rainfall': 'Value'}) 
-                rainfall_df['Metric'] = 'rainfall' 
-                dfs_to_plot.append(rainfall_df) 
-
-        for model_name in selected_models: 
-            df = st.session_state.comparative_data.get(model_name, pd.DataFrame()) 
-            if not df.empty and other_metrics: 
-                existing_other_metrics = [m for m in other_metrics if m in df.columns] 
-                
-                if existing_other_metrics: 
-                    df_other_metrics = df[['year', 'month'] + existing_other_metrics].copy() 
-                    df_other_metrics['model_name'] = model_name 
-                    
-                    melted_df = df_other_metrics.melt( 
-                        id_vars=['year', 'month', 'model_name'], 
-                        value_vars=existing_other_metrics, 
-                        var_name='Metric', 
-                        value_name='Value' 
-                    ) 
-                    dfs_to_plot.append(melted_df) 
-
-        if not dfs_to_plot: 
-            st.warning("⚠️ Data tidak tersedia untuk model atau metrik yang dipilih.") 
+        if not selected_models or not metrics_to_plot: 
+            st.info("💡 Pilih setidaknya satu model dan satu metrik untuk menampilkan plot.") 
         else: 
-            combined_df = pd.concat(dfs_to_plot, ignore_index=True) 
-            combined_df['date'] = pd.to_datetime(combined_df[['year', 'month']].assign(day=1)) 
-            combined_df.sort_values(by='date', inplace=True) 
-            combined_df['combined_label'] = combined_df['Metric'] + ' (' + combined_df['model_name'] + ')' 
-            combined_df.loc[combined_df['Metric'] == 'rainfall', 'combined_label'] = 'Rainfall (Ground Truth)' 
+            is_rainfall_selected = 'rainfall' in metrics_to_plot 
+            other_metrics = [m for m in metrics_to_plot if m != 'rainfall'] 
 
-            color_map = { 
-                'Rainfall (Ground Truth)': 'saddlebrown', 'ch_pred (0 Variabel)': 'royalblue', 
-                'error_bias (0 Variabel)': 'darkblue', 'absolute_error (0 Variabel)': 'midnightblue', 
-                'squared_error (0 Variabel)': 'navy', 'ch_pred (10 Variabel)': 'deeppink', 
-                'error_bias (10 Variabel)': 'darkred', 'absolute_error (10 Variabel)': 'crimson', 
-                'squared_error (10 Variabel)': 'indianred', 'ch_pred (51 Variabel)': 'forestgreen', 
-                'error_bias (51 Variabel)': 'darkgreen', 'absolute_error (51 Variabel)': 'seagreen', 
-                'squared_error (51 Variabel)': 'olivedrab', 
-            } 
+            dfs_to_plot = [] 
+            
+            # Logika penggabungan data untuk Time Series 
+            if is_rainfall_selected and selected_models: 
+                first_model = selected_models[0] 
+                df_rainfall = st.session_state.comparative_data.get(first_model) 
+                if not df_rainfall.empty and 'rainfall' in df_rainfall.columns: 
+                    rainfall_df = df_rainfall[['year', 'month', 'rainfall']].copy() 
+                    rainfall_df['model_name'] = 'Ground Truth' 
+                    rainfall_df = rainfall_df.rename(columns={'rainfall': 'Value'}) 
+                    rainfall_df['Metric'] = 'rainfall' 
+                    dfs_to_plot.append(rainfall_df) 
 
-            fig = px.line( 
-                combined_df, 
-                x='date', y='Value', color='combined_label', 
-                title=f'Perbandingan Time Series untuk {st.session_state.selected_station_name}', 
-                labels={'Value': 'Nilai', 'date': 'Tanggal', 'combined_label': 'Metrik'}, 
-                markers=True, color_discrete_map=color_map 
-            ) 
-            st.plotly_chart(fig, use_container_width=True) 
+            for model_name in selected_models: 
+                df = st.session_state.comparative_data.get(model_name, pd.DataFrame()) 
+                if not df.empty and other_metrics: 
+                    existing_other_metrics = [m for m in other_metrics if m in df.columns] 
+                    
+                    if existing_other_metrics: 
+                        df_other_metrics = df[['year', 'month'] + existing_other_metrics].copy() 
+                        df_other_metrics['model_name'] = model_name 
+                        
+                        melted_df = df_other_metrics.melt( 
+                            id_vars=['year', 'month', 'model_name'], 
+                            value_vars=existing_other_metrics, 
+                            var_name='Metric', 
+                            value_name='Value' 
+                        ) 
+                        dfs_to_plot.append(melted_df) 
+
+            if not dfs_to_plot: 
+                st.warning("⚠️ Data tidak tersedia untuk model atau metrik yang dipilih.") 
+            else: 
+                combined_df = pd.concat(dfs_to_plot, ignore_index=True) 
+                combined_df['date'] = pd.to_datetime(combined_df[['year', 'month']].assign(day=1)) 
+                combined_df.sort_values(by='date', inplace=True) 
+                combined_df['combined_label'] = combined_df['Metric'] + ' (' + combined_df['model_name'] + ')' 
+                combined_df.loc[combined_df['Metric'] == 'rainfall', 'combined_label'] = 'Rainfall (Ground Truth)' 
+
+                color_map = { 
+                    'Rainfall (Ground Truth)': 'saddlebrown', 'ch_pred (0 Variabel)': 'royalblue', 
+                    'error_bias (0 Variabel)': 'darkblue', 'absolute_error (0 Variabel)': 'midnightblue', 
+                    'squared_error (0 Variabel)': 'navy', 'ch_pred (10 Variabel)': 'deeppink', 
+                    'error_bias (10 Variabel)': 'darkred', 'absolute_error (10 Variabel)': 'crimson', 
+                    'squared_error (10 Variabel)': 'indianred', 'ch_pred (51 Variabel)': 'forestgreen', 
+                    'error_bias (51 Variabel)': 'darkgreen', 'absolute_error (51 Variabel)': 'seagreen', 
+                    'squared_error (51 Variabel)': 'olivedrab', 
+                } 
+
+                fig = px.line( 
+                    combined_df, 
+                    x='date', y='Value', color='combined_label', 
+                    title=f'Perbandingan Time Series untuk {st.session_state.selected_station_name}', 
+                    labels={'Value': 'Nilai', 'date': 'Tanggal', 'combined_label': 'Metrik'}, 
+                    markers=True, color_discrete_map=color_map 
+                ) 
+                st.plotly_chart(fig, use_container_width=True) 
 
 # --- Pesan Akhir (Tidak Berubah) --- 
 elif not submit: 
